@@ -1,0 +1,88 @@
+services:
+  traefik:
+    image: traefik:3.5
+    container_name: t_proxy
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"  
+      - "--certificatesresolvers.letsencrypt.acme.email=info@computeestates.com"  
+      - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=60s"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./configs/traefik/acme.json:/etc/traefik/acme.json"
+      - "./configs/traefik/traefik.yml:/etc/traefik/traefik.yml"  
+    networks:
+      - saas-net
+    environment:
+      - "TRAEFIK_LOG_LEVEL=DEBUG"
+  
+  php_fpm:
+    image: php:8-fpm-alpine
+    container_name: php_fpm
+    build:
+      context: ./configs/php_fpm
+      dockerfile: Dockerfile
+    volumes:
+      - ./saas/:/usr/share/nginx/html/saas/
+    networks:
+      - saas-net
+
+  saas_db:
+    image: mysql:oraclelinux9
+    restart: always
+    container_name: saas_db
+    environment:
+       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+       MYSQL_DATABASE:  kira_db
+       MYSQL_USER:  u_saas_db
+       MYSQL_PASSWORD:  ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db/saas/:/var/lib/mysql  
+    networks:
+      - saas-net
+
+  akilli_kira_saas:
+    image: nginx:latest
+    container_name: akilli_saas
+    depends_on:
+      - php_fpm
+    volumes:
+      - ./configs/nginx/saas.conf:/etc/nginx/conf.d/default.conf  
+      - ./saas/:/usr/share/nginx/html/saas/
+    labels:
+      - "traefik.enable=true"
+      
+      # HTTP to HTTPS redirect
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https&permanent=true"
+      - "traefik.http.routers.saas.entrypoints=web"
+      - "traefik.http.routers.saas.middlewares=https-redirect"  
+      - "traefik.http.routers.saas.rule=Host(`kira.computeeastates.com`) || Host(`www.kira.computeeastates.com`)"
+
+      # HTTPS router
+      - "traefik.http.routers.saas-secure.entrypoints=websecure"
+      - "traefik.http.routers.saas-secure.rule=Host(`kira.computeeastates.com`) || Host(`www.kira.computeeastates.com`)"
+      - "traefik.http.routers.saas-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.saas-secure.service=akilli_kira_saas"  
+      
+      # Service definition
+      - "traefik.http.services.akilli_kira_saas.loadbalancer.server.port=80"
+    
+  
+networks:
+  saas-net:
+    external: true
+
+volumes:
+  saas_db:
