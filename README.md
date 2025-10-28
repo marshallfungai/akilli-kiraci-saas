@@ -2,15 +2,20 @@
 
 # Containerized docker Saas 
  - Traefik Proxy
- - Mariadb
+ - Mysql
  - Laravel-based SaaS application for property and tenant management.
+
+
+---
 
 # Traefik Proxy
 ## Features
 - **Provider**: Docker provider
-- **Certificates Resolvers**: Letsencrypt
+- **Certificates Resolvers**: Letsencrypt (supports http redirect to https using Traefik middleware)
 - **Microservice Exposed Ports** :80 / :443
 - 
+
+---
  
 #  Laravel App 
 ## Features
